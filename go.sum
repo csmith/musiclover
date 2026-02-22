@@ -18,8 +18,8 @@ github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZb
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/stretchr/testify v1.11.1 h1:7s2iGBzp5EwR7/aIZr8ao5+dra3wiQyKjjFuvgVKu7U=
 github.com/stretchr/testify v1.11.1/go.mod h1:wZwfW3scLgRK+23gO65QZefKpKQRnfz6sD981Nm4B6U=
-github.com/supersonic-app/go-subsonic v0.0.0-20250917154259-2bbe535cf8f3 h1:RuCWkkDc0THP9Y5wbPG8q0Or5zT5cxfLdVzznX+hXbA=
-github.com/supersonic-app/go-subsonic v0.0.0-20250917154259-2bbe535cf8f3/go.mod h1:ClhAgC2qobwH19D6kdwULLYSHlOmldDGkdu2G2Z0Ijo=
+github.com/supersonic-app/go-subsonic v0.0.0-20260125165421-1efaa048a150 h1:Wh3EUdJI8bSr2nYtnkmG+bGNzEtGGSW3Rcg4eDM1a0M=
+github.com/supersonic-app/go-subsonic v0.0.0-20260125165421-1efaa048a150/go.mod h1:ClhAgC2qobwH19D6kdwULLYSHlOmldDGkdu2G2Z0Ijo=
 github.com/twoscott/gobble-fm v1.0.8 h1:Ambe1MhNiEWFEo2Pi4lj6U2y3Dg7ujE0hqfO0b1TWhY=
 github.com/twoscott/gobble-fm v1.0.8/go.mod h1:2AXW+YkZ35vjWgTzzcBwtyBYdAUTrSK9G9+6AJXm/7U=
 golang.org/x/image v0.13.0 h1:3cge/F/QTkNLauhf2QoE9zp+7sr+ZcL4HnoZmdwg9sg=

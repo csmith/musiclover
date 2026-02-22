@@ -7,7 +7,7 @@ require (
 	github.com/csmith/envflag/v2 v2.0.0
 	github.com/csmith/slogflags v1.1.0
 	github.com/stretchr/testify v1.11.1
-	github.com/supersonic-app/go-subsonic v0.0.0-20250917154259-2bbe535cf8f3
+	github.com/supersonic-app/go-subsonic v0.0.0-20260125165421-1efaa048a150
 	github.com/twoscott/gobble-fm v1.0.8
 )
 
