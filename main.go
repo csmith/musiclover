@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"log/slog"
@@ -35,11 +36,17 @@ var (
 	period       = flag.Duration("period", 0, "Length of time between each update. If zero, will update once and exit.")
 
 	availableSources map[string]model.Source
+
+	// version is overridden at build time with:
+	//   -ldflags="-X 'main.version=$(git rev-parse --short HEAD)'"
+	version = "dev"
 )
 
 func main() {
 	envflag.Parse()
 	_ = slogflags.Logger(slogflags.WithSetDefault(true))
+
+	slog.Info("Starting musiclover", "version", version)
 
 	initialiseSources()
 
@@ -57,29 +64,42 @@ func main() {
 
 	if period.Minutes() < 1 {
 		slog.Debug("Period is less than 1 minute, doing a one-shot run")
-		run(src, dests)
+		if err := run(src, dests); err != nil {
+			slog.Error("Sync failed", "error", err)
+			os.Exit(1)
+		}
 	} else {
 		for {
-			run(src, dests)
+			if err := run(src, dests); err != nil {
+				// Deliberately not exiting on failure: if we're being rate
+				// limited or a server is down, exiting just makes the
+				// container restart and hammer the API harder. Sleep and
+				// try again next period.
+				slog.Error("Sync failed, will retry at next update", "error", err, "period", period)
+			}
 			slog.Info("Sleeping until next update", "period", period)
 			time.Sleep(*period)
 		}
 	}
 }
 
-func run(src model.Source, dests map[string]model.Source) {
+// run performs a single sync pass: it fetches the loved tracks from the
+// source and syncs them to every destination. A failure syncing to one
+// destination does not prevent the others being attempted.
+func run(src model.Source, dests map[string]model.Source) error {
 	sourceTracks, err := src.LovedTracks()
 	if err != nil {
-		slog.Error("Failed to get loved tracks from source", "source", *source, "error", err)
-		os.Exit(1)
+		return fmt.Errorf("failed to get loved tracks from source %s: %w", *source, err)
 	}
 
+	var errs []error
 	for name, dest := range dests {
 		if err := sync(name, dest, sourceTracks); err != nil {
 			slog.Error("Failed to sync to destination", "destination", name, "error", err)
-			os.Exit(1)
+			errs = append(errs, fmt.Errorf("failed to sync to %s: %w", name, err))
 		}
 	}
+	return errors.Join(errs...)
 }
 
 func initialiseSources() {
@@ -105,8 +125,9 @@ func initialiseSources() {
 
 	if *listenbrainzToken != "" {
 		availableSources["listenbrainz"] = &sources.ListenBrainz{
-			Token:    *listenbrainzToken,
-			Username: *listenbrainzUsername,
+			Token:     *listenbrainzToken,
+			Username:  *listenbrainzUsername,
+			UserAgent: fmt.Sprintf("musiclover/%s (+https://github.com/csmith/musiclover)", version),
 		}
 	}
 }

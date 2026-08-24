@@ -15,25 +15,15 @@ import (
 
 // ListenBrainz is a source that retrieves loved tracks from ListenBrainz
 type ListenBrainz struct {
-	Token    string
-	Username string
+	Token     string
+	Username  string
+	UserAgent string
 }
 
-type listenBrainzFeedbackResponse struct {
-	Feedback   []listenBrainzFeedback `json:"feedback"`
-	Offset     int                    `json:"offset"`
-	Count      int                    `json:"count"`
-	TotalCount int                    `json:"total_count"`
-}
-
-type listenBrainzFeedback struct {
-	RecordingMBID string `json:"recording_mbid"`
-	Score         int    `json:"score"`
-}
-
-type listenBrainzRecordingFeedback struct {
-	RecordingMBID string `json:"recording_mbid"`
-	Score         int    `json:"score"`
+// httpClient is shared by all ListenBrainz requests so that connections to
+// the API can be reused rather than reopened for every request.
+var httpClient = &http.Client{
+	Timeout: 30 * time.Second,
 }
 
 // LovedTracks retrieves loved tracks from ListenBrainz
@@ -62,55 +52,28 @@ func (lb *ListenBrainz) LovedTracks() ([]model.LovedTrack, error) {
 	return allTracks, nil
 }
 
-// fetchLovedTracksPage fetches a single page of loved tracks with retry logic
+// fetchLovedTracksPage fetches a single page of loved tracks
 func (lb *ListenBrainz) fetchLovedTracksPage(offset, count int) ([]model.LovedTrack, int, error) {
-	const maxRetries = 3
 	url := fmt.Sprintf("https://api.listenbrainz.org/1/feedback/user/%s/get-feedback?score=1&offset=%d&count=%d", lb.Username, offset, count)
 
-	for attempt := 0; attempt < maxRetries; attempt++ {
-		req, err := http.NewRequest("GET", url, nil)
-		if err != nil {
-			return nil, 0, err
-		}
-
-		req.Header.Set("Authorization", fmt.Sprintf("Token %s", lb.Token))
-
-		client := &http.Client{}
-		resp, err := client.Do(req)
-		if err != nil {
-			return nil, 0, err
-		}
-		defer resp.Body.Close()
-
-		if resp.StatusCode == http.StatusTooManyRequests {
-			sleepDuration := lb.getSleepDuration(resp)
-			slog.Warn("Rate limited (429), retrying", "attempt", attempt+1, "sleep_seconds", sleepDuration.Seconds(), "source", "listenbrainz")
-			time.Sleep(sleepDuration)
-			continue
-		}
-
-		if resp.StatusCode != http.StatusOK {
-			body, _ := io.ReadAll(resp.Body)
-			return nil, 0, fmt.Errorf("ListenBrainz API error: %s - %s", resp.Status, string(body))
-		}
-
-		var feedbackResp listenBrainzFeedbackResponse
-		if err := json.NewDecoder(resp.Body).Decode(&feedbackResp); err != nil {
-			return nil, 0, err
-		}
-
-		var tracks []model.LovedTrack
-		for _, feedback := range feedbackResp.Feedback {
-			tracks = append(tracks, model.LovedTrack{
-				TrackMBID: feedback.RecordingMBID,
-			})
-		}
-
-		time.Sleep(1 * time.Second)
-		return tracks, feedbackResp.TotalCount, nil
+	body, err := lb.doRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return nil, 0, err
 	}
 
-	return nil, 0, fmt.Errorf("ListenBrainz: max retries exceeded due to rate limiting")
+	var feedbackResp listenBrainzFeedbackResponse
+	if err := json.Unmarshal(body, &feedbackResp); err != nil {
+		return nil, 0, err
+	}
+
+	var tracks []model.LovedTrack
+	for _, feedback := range feedbackResp.Feedback {
+		tracks = append(tracks, model.LovedTrack{
+			TrackMBID: feedback.RecordingMBID,
+		})
+	}
+
+	return tracks, feedbackResp.TotalCount, nil
 }
 
 // Love marks tracks as loved on ListenBrainz
@@ -153,84 +116,123 @@ func (lb *ListenBrainz) submitFeedback(tracks []model.LovedTrack, score int) err
 	return nil
 }
 
-// submitSingleFeedback submits a single feedback request, retrying on 429
+// submitSingleFeedback submits a single feedback request
 func (lb *ListenBrainz) submitSingleFeedback(jsonData []byte) error {
-	const maxRetries = 3
+	_, err := lb.doRequest(http.MethodPost, "https://api.listenbrainz.org/1/feedback/recording-feedback", jsonData)
+	return err
+}
 
-	for attempt := 0; attempt < maxRetries; attempt++ {
-		req, err := http.NewRequest("POST", "https://api.listenbrainz.org/1/feedback/recording-feedback", bytes.NewBuffer(jsonData))
+// doRequest performs a request against the ListenBrainz API, sleeping based
+// on the rate limit headers of each response and retrying with backoff for
+// as long as we are being rate limited. It returns the body of a successful
+// response.
+func (lb *ListenBrainz) doRequest(method, url string, body []byte) ([]byte, error) {
+	const maxAttempts = 10
+
+	backoff := 10 * time.Second
+	for attempt := 1; ; attempt++ {
+		var reqBody io.Reader
+		if body != nil {
+			reqBody = bytes.NewReader(body)
+		}
+
+		req, err := http.NewRequest(method, url, reqBody)
 		if err != nil {
-			return err
+			return nil, err
 		}
 
 		req.Header.Set("Authorization", fmt.Sprintf("Token %s", lb.Token))
-		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("User-Agent", lb.userAgent())
+		if body != nil {
+			req.Header.Set("Content-Type", "application/json")
+		}
 
-		client := &http.Client{}
-		resp, err := client.Do(req)
+		resp, err := httpClient.Do(req)
 		if err != nil {
-			return err
+			return nil, err
 		}
-		defer resp.Body.Close()
-
-		if resp.StatusCode == http.StatusTooManyRequests {
-			sleepDuration := lb.getSleepDuration(resp)
-			slog.Warn("Rate limited (429), retrying", "attempt", attempt+1, "sleep_seconds", sleepDuration.Seconds(), "source", "listenbrainz")
-			time.Sleep(sleepDuration)
-			continue
+		respBody, err := io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
+		if err != nil {
+			return nil, err
 		}
 
-		lb.handleRateLimit(resp)
+		switch {
+		case resp.StatusCode == http.StatusOK:
+			time.Sleep(nextRequestDelay(resp))
+			return respBody, nil
 
-		if resp.StatusCode != http.StatusOK {
-			body, _ := io.ReadAll(resp.Body)
-			return fmt.Errorf("ListenBrainz API error: %s - %s", resp.Status, string(body))
+		case resp.StatusCode == http.StatusTooManyRequests:
+			if attempt >= maxAttempts {
+				return nil, fmt.Errorf("ListenBrainz: still rate limited after %d attempts", attempt)
+			}
+			delay := retryDelay(resp, backoff)
+			backoff = min(2*backoff, 5*time.Minute)
+			slog.Warn("Rate limited (429), backing off", "attempt", attempt, "max_attempts", maxAttempts, "sleep_seconds", delay.Seconds(), "source", "listenbrainz")
+			time.Sleep(delay)
+
+		default:
+			return nil, fmt.Errorf("ListenBrainz API error: %s - %s", resp.Status, string(respBody))
 		}
-
-		time.Sleep(1 * time.Second)
-		return nil
 	}
-
-	return fmt.Errorf("ListenBrainz: max retries exceeded due to rate limiting")
 }
 
-// getSleepDuration calculates sleep duration from rate limit headers
-func (lb *ListenBrainz) getSleepDuration(resp *http.Response) time.Duration {
-	resetInStr := resp.Header.Get("X-RateLimit-Reset-In")
-	if resetInStr != "" {
-		if resetIn, err := strconv.Atoi(resetInStr); err == nil {
-			return time.Duration(resetIn+5) * time.Second
-		}
+// userAgent returns the User-Agent to send, falling back to a default if
+// none was configured.
+func (lb *ListenBrainz) userAgent() string {
+	if lb.UserAgent != "" {
+		return lb.UserAgent
 	}
-	return 10 * time.Second
+	return "musiclover/dev"
 }
 
-// handleRateLimit checks rate limit headers and sleeps if necessary
-func (lb *ListenBrainz) handleRateLimit(resp *http.Response) {
-	remainingStr := resp.Header.Get("X-RateLimit-Remaining")
-	resetInStr := resp.Header.Get("X-RateLimit-Reset-In")
-	limit := resp.Header.Get("X-RateLimit-Limit")
-
-	if remainingStr == "" {
-		return
+// retryDelay returns how long to back off after a 429 response: the window
+// reset time reported by the server if available, or the given fallback
+// (which callers grow exponentially between attempts) otherwise.
+func retryDelay(resp *http.Response, fallback time.Duration) time.Duration {
+	if resetIn, ok := headerInt(resp, "X-RateLimit-Reset-In"); ok {
+		return time.Duration(resetIn+5) * time.Second
 	}
+	return fallback
+}
 
-	remaining, err := strconv.Atoi(remainingStr)
-	if err != nil {
-		return
-	}
+// nextRequestDelay returns how long to wait before the next request, based
+// on the rate limit headers of the previous response. Normally this is a
+// steady one request per second, but if the current window is nearly
+// exhausted we wait for it to reset rather than risking a 429.
+func nextRequestDelay(resp *http.Response) time.Duration {
+	const baseDelay = 1 * time.Second
 
-	if remaining <= 1 {
-		resetIn, err := strconv.Atoi(resetInStr)
-		if err != nil {
-			slog.Warn("Rate limit low but couldn't parse reset time", "remaining", remaining, "limit", limit, "source", "listenbrainz")
-			return
+	if remaining, ok := headerInt(resp, "X-RateLimit-Remaining"); ok && remaining <= 2 {
+		if resetIn, ok := headerInt(resp, "X-RateLimit-Reset-In"); ok {
+			return max(time.Duration(resetIn+1)*time.Second, baseDelay)
 		}
-
-		sleepDuration := time.Duration(resetIn+5) * time.Second
-		slog.Warn("Rate limit low, sleeping", "remaining", remaining, "limit", limit, "duration_seconds", sleepDuration.Seconds(), "source", "listenbrainz")
-		time.Sleep(sleepDuration)
 	}
+	return baseDelay
+}
+
+// headerInt reads an integer-valued header, reporting whether it was present
+// and parseable.
+func headerInt(resp *http.Response, name string) (value int, ok bool) {
+	value, err := strconv.Atoi(resp.Header.Get(name))
+	return value, err == nil
+}
+
+type listenBrainzFeedbackResponse struct {
+	Feedback   []listenBrainzFeedback `json:"feedback"`
+	Offset     int                    `json:"offset"`
+	Count      int                    `json:"count"`
+	TotalCount int                    `json:"total_count"`
+}
+
+type listenBrainzFeedback struct {
+	RecordingMBID string `json:"recording_mbid"`
+	Score         int    `json:"score"`
+}
+
+type listenBrainzRecordingFeedback struct {
+	RecordingMBID string `json:"recording_mbid"`
+	Score         int    `json:"score"`
 }
 
 var _ model.Source = &ListenBrainz{}

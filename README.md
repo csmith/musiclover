@@ -46,10 +46,14 @@ musiclover runs (or added and removed if `remove-other` is enabled). Again,
 this shouldn't cause much trouble from a stats/recommendations point of view,
 but it may be annoying.
 
-ListenBrainz is fairly heavily rate limited. musiclover will sleep for a second
-after each request, and may sleep for longer if it still nears the rate limit.
-Each love/unlove has to be done in a separate request, so syncing a large amount
-(e.g. the first time you use the tool) will take many minutes.
+ListenBrainz is fairly heavily rate limited. musiclover sleeps for at least a
+second after each request, waits for the rate limit window to reset when it
+nears the limit, and backs off and retries when actually rate limited. Each
+love/unlove has to be done in a separate request, so syncing a large amount
+(e.g. the first time you use the tool) will take many minutes. If rate limiting
+persists despite the backoff, the current update is abandoned and retried at
+the next period, rather than exiting and being restarted straight back into
+the same rate limit.
 
 ## Example docker-compose file
 

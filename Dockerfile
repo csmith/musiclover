@@ -4,7 +4,7 @@ COPY . .
 
 RUN --mount=type=cache,target=/go/pkg/mod \
     set -eux; \
-    CGO_ENABLED=0 GO111MODULE=on go install ./; \
+    CGO_ENABLED=0 GO111MODULE=on go install -ldflags="-X 'main.version=$(git rev-parse --short HEAD)'" ./; \
     go run github.com/google/go-licenses@latest save ./... --save_path=/notices;
 
 FROM ghcr.io/greboid/dockerbase/nonroot:1.20250803.0
