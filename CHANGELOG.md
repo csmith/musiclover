@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.1.1 - 2026-10-20
+
+- Build with Go 1.27.3 and use dockerbase 1.20261020.1, both of which stop
+  trusting the compromised eMudhra intermediate CA.
+
 ## 1.1.0 - 2026-08-24
 
 - Handle ListenBrainz rate limiting more gracefully: requests are paced based
