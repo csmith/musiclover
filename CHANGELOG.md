@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Update golang.org/x/image to v0.45.0 (GO-2026-6222)
+
 ## 1.1.1 - 2026-10-20
 
 - Build with Go 1.27.3 and use dockerbase 1.20261020.1, both of which stop
