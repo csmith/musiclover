@@ -1,8 +1,9 @@
 # Changelog
 
-## Unreleased
+## 1.1.2 - 2026-11-12
 
 - Update golang.org/x/image to v0.45.0 (GO-2026-6222)
+- Update to Go 1.27.4
 
 ## 1.1.1 - 2026-10-20
 
