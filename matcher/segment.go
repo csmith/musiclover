@@ -32,19 +32,25 @@ func Segment(desired []model.LovedTrack, actual []model.LovedTrack) SegmentResul
 		for j, actualTrack := range actual {
 			score := Match(desiredTrack, actualTrack)
 			if score != NoMatch {
-				candidates = append(candidates, matchCandidate{
-					desiredIndex: i,
-					actualIndex:  j,
-					score:        score,
-				})
+				candidates = append(
+					candidates,
+					matchCandidate{
+						desiredIndex: i,
+						actualIndex:  j,
+						score:        score,
+					},
+				)
 			}
 		}
 	}
 
 	// Sort by score descending
-	sort.Slice(candidates, func(i, j int) bool {
-		return candidates[i].score > candidates[j].score
-	})
+	sort.Slice(
+		candidates,
+		func(i, j int) bool {
+			return candidates[i].score > candidates[j].score
+		},
+	)
 
 	// Greedy matching: pick best scores first
 	matchedDesired := make(map[int]bool)

@@ -48,9 +48,10 @@ func Match(a, b model.LovedTrack) Score {
 
 	// Fuzzy match on artist + track name
 	if a.Artist != "" && b.Artist != "" && a.Track != "" && b.Track != "" {
-		aKey := normalizeForMatching(a.Artist) + "|" + normalizeForMatching(a.Track)
-		bKey := normalizeForMatching(b.Artist) + "|" + normalizeForMatching(b.Track)
-		distance := levenshtein.ComputeDistance(aKey, bKey)
+		distance := levenshtein.ComputeDistance(
+			normalizeForMatching(a.Artist)+"|"+normalizeForMatching(a.Track),
+			normalizeForMatching(b.Artist)+"|"+normalizeForMatching(b.Track),
+		)
 		if distance <= maxLevenshteinDistance {
 			return FuzzyMatch
 		}

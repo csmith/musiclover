@@ -56,10 +56,13 @@ func TestNormalizeForMatching(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := normalizeForMatching(tt.input)
-			assert.Equal(t, tt.expected, result)
-		})
+		t.Run(
+			tt.name,
+			func(t *testing.T) {
+				result := normalizeForMatching(tt.input)
+				assert.Equal(t, tt.expected, result)
+			},
+		)
 	}
 }
 
@@ -217,9 +220,12 @@ func TestMatch(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := Match(tt.trackA, tt.trackB)
-			assert.Equal(t, tt.expected, result)
-		})
+		t.Run(
+			tt.name,
+			func(t *testing.T) {
+				result := Match(tt.trackA, tt.trackB)
+				assert.Equal(t, tt.expected, result)
+			},
+		)
 	}
 }

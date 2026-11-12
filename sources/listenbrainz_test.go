@@ -8,12 +8,12 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func responseWithHeaders(headers map[string]string) *http.Response {
-	resp := &http.Response{Header: make(http.Header)}
+func headerOf(headers map[string]string) http.Header {
+	header := make(http.Header)
 	for name, value := range headers {
-		resp.Header.Set(name, value)
+		header.Set(name, value)
 	}
-	return resp
+	return header
 }
 
 func TestNextRequestDelay(t *testing.T) {
@@ -50,9 +50,12 @@ func TestNextRequestDelay(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			assert.Equal(t, test.expected, nextRequestDelay(responseWithHeaders(test.headers)))
-		})
+		t.Run(
+			test.name,
+			func(t *testing.T) {
+				assert.Equal(t, test.expected, nextRequestDelay(headerOf(test.headers)))
+			},
+		)
 	}
 }
 
@@ -84,8 +87,11 @@ func TestRetryDelay(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			assert.Equal(t, test.expected, retryDelay(responseWithHeaders(test.headers), test.fallback))
-		})
+		t.Run(
+			test.name,
+			func(t *testing.T) {
+				assert.Equal(t, test.expected, retryDelay(headerOf(test.headers), test.fallback))
+			},
+		)
 	}
 }

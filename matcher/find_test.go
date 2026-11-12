@@ -114,15 +114,18 @@ func TestFind(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := Find(tt.tracks, tt.target)
+		t.Run(
+			tt.name,
+			func(t *testing.T) {
+				result := Find(tt.tracks, tt.target)
 
-			if tt.expectedIndex == nil {
-				assert.Equal(t, -1, result)
-			} else {
-				assert.Equal(t, *tt.expectedIndex, result)
-			}
-		})
+				if tt.expectedIndex == nil {
+					assert.Equal(t, -1, result)
+				} else {
+					assert.Equal(t, *tt.expectedIndex, result)
+				}
+			},
+		)
 	}
 }
 

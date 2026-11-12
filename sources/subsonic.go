@@ -54,8 +54,7 @@ func (s *Subsonic) LovedTracks() ([]model.LovedTrack, error) {
 	}
 
 	// Convert to LovedTrack format
-	tracks := s.childToLovedTrack(starred.Song, artistMBIDs, albumMBIDs)
-	return tracks, nil
+	return s.childToLovedTrack(starred.Song, artistMBIDs, albumMBIDs), nil
 }
 
 // Love stars tracks on the Subsonic server
@@ -79,9 +78,11 @@ func (s *Subsonic) Love(tracks []model.LovedTrack) error {
 		songIDs = append(songIDs, song.ID)
 	}
 
-	return client.Star(subsonic.StarParameters{
-		SongIDs: songIDs,
-	})
+	return client.Star(
+		subsonic.StarParameters{
+			SongIDs: songIDs,
+		},
+	)
 }
 
 // Unlove unstars tracks on the Subsonic server
@@ -105,9 +106,11 @@ func (s *Subsonic) Unlove(tracks []model.LovedTrack) error {
 		songIDs = append(songIDs, song.ID)
 	}
 
-	return client.Unstar(subsonic.StarParameters{
-		SongIDs: songIDs,
-	})
+	return client.Unstar(
+		subsonic.StarParameters{
+			SongIDs: songIDs,
+		},
+	)
 }
 
 // getClient lazily connects to the Subsonic server
@@ -182,10 +185,13 @@ func (s *Subsonic) getAlbumMBIDs(client *subsonic.Client) (map[string]string, er
 	const batchSize = 500
 
 	for {
-		albums, err := client.GetAlbumList("alphabeticalByName", map[string]string{
-			"size":   strconv.Itoa(batchSize),
-			"offset": strconv.Itoa(offset),
-		})
+		albums, err := client.GetAlbumList(
+			"alphabeticalByName",
+			map[string]string{
+				"size":   strconv.Itoa(batchSize),
+				"offset": strconv.Itoa(offset),
+			},
+		)
 		if err != nil {
 			return nil, err
 		}
@@ -227,12 +233,15 @@ func (s *Subsonic) getAllSongs(client *subsonic.Client) ([]*subsonic.Child, erro
 	const batchSize = 500
 
 	for {
-		results, err := client.Search3("", map[string]string{
-			"songCount":   strconv.Itoa(batchSize),
-			"songOffset":  strconv.Itoa(offset),
-			"artistCount": "0",
-			"albumCount":  "0",
-		})
+		results, err := client.Search3(
+			"",
+			map[string]string{
+				"songCount":   strconv.Itoa(batchSize),
+				"songOffset":  strconv.Itoa(offset),
+				"artistCount": "0",
+				"albumCount":  "0",
+			},
+		)
 		if err != nil {
 			return nil, err
 		}
@@ -255,17 +264,23 @@ func (s *Subsonic) getAllSongs(client *subsonic.Client) ([]*subsonic.Child, erro
 }
 
 // childToLovedTrack converts Subsonic Children to LovedTracks
-func (s *Subsonic) childToLovedTrack(songs []*subsonic.Child, artistMBIDs, albumMBIDs map[string]string) []model.LovedTrack {
+func (s *Subsonic) childToLovedTrack(
+	songs []*subsonic.Child,
+	artistMBIDs, albumMBIDs map[string]string,
+) []model.LovedTrack {
 	tracks := make([]model.LovedTrack, 0, len(songs))
 	for _, song := range songs {
-		tracks = append(tracks, model.LovedTrack{
-			Track:      song.Title,
-			Artist:     song.Artist,
-			ArtistMBID: artistMBIDs[song.ArtistID],
-			Album:      song.Album,
-			AlbumMBID:  albumMBIDs[song.AlbumID],
-			TrackMBID:  song.MusicBrainzID,
-		})
+		tracks = append(
+			tracks,
+			model.LovedTrack{
+				Track:      song.Title,
+				Artist:     song.Artist,
+				ArtistMBID: artistMBIDs[song.ArtistID],
+				Album:      song.Album,
+				AlbumMBID:  albumMBIDs[song.AlbumID],
+				TrackMBID:  song.MusicBrainzID,
+			},
+		)
 	}
 	return tracks
 }
@@ -305,5 +320,3 @@ func (s *Subsonic) findSongs(tracks []model.LovedTrack) ([]*subsonic.Child, erro
 	}
 	return songs, nil
 }
-
-var _ model.Source = &Subsonic{}

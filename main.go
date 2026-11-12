@@ -35,12 +35,18 @@ var (
 	removeOther  = flag.Bool("remove-other", false, "Remove tracks that were loved but aren't in the source")
 	period       = flag.Duration("period", 0, "Length of time between each update. If zero, will update once and exit.")
 
-	availableSources map[string]model.Source
+	availableSources map[string]lovedTrackStore
 
 	// version is overridden at build time with:
 	//   -ldflags="-X 'main.version=$(git rev-parse --short HEAD)'"
 	version = "dev"
 )
+
+type lovedTrackStore interface {
+	LovedTracks() ([]model.LovedTrack, error)
+	Love(tracks []model.LovedTrack) error
+	Unlove(tracks []model.LovedTrack) error
+}
 
 func main() {
 	envflag.Parse()
@@ -86,7 +92,7 @@ func main() {
 // run performs a single sync pass: it fetches the loved tracks from the
 // source and syncs them to every destination. A failure syncing to one
 // destination does not prevent the others being attempted.
-func run(src model.Source, dests map[string]model.Source) error {
+func run(src lovedTrackStore, dests map[string]lovedTrackStore) error {
 	sourceTracks, err := src.LovedTracks()
 	if err != nil {
 		return fmt.Errorf("failed to get loved tracks from source %s: %w", *source, err)
@@ -103,7 +109,7 @@ func run(src model.Source, dests map[string]model.Source) error {
 }
 
 func initialiseSources() {
-	availableSources = make(map[string]model.Source)
+	availableSources = make(map[string]lovedTrackStore)
 
 	if *subsonicServer != "" {
 		availableSources["subsonic"] = &sources.Subsonic{
@@ -132,9 +138,9 @@ func initialiseSources() {
 	}
 }
 
-func selectedSource() (model.Source, error) {
+func selectedSource() (lovedTrackStore, error) {
 	if *source == "" {
-		return nil, fmt.Errorf("source must be specified")
+		return nil, errors.New("source must be specified")
 	}
 
 	src, ok := availableSources[*source]
@@ -145,9 +151,9 @@ func selectedSource() (model.Source, error) {
 	return src, nil
 }
 
-func selectedDestinations() (map[string]model.Source, error) {
+func selectedDestinations() (map[string]lovedTrackStore, error) {
 	if *destinations == "" {
-		return nil, fmt.Errorf("destinations must be specified")
+		return nil, errors.New("destinations must be specified")
 	}
 
 	destNames := strings.Split(*destinations, ",")
@@ -155,7 +161,7 @@ func selectedDestinations() (map[string]model.Source, error) {
 		destNames[i] = strings.TrimSpace(destNames[i])
 	}
 
-	dests := make(map[string]model.Source)
+	dests := make(map[string]lovedTrackStore)
 
 	for _, destName := range destNames {
 		if destName == *source {
@@ -174,7 +180,7 @@ func selectedDestinations() (map[string]model.Source, error) {
 	return dests, nil
 }
 
-func sync(name string, dest model.Source, sourceTracks []model.LovedTrack) error {
+func sync(name string, dest lovedTrackStore, sourceTracks []model.LovedTrack) error {
 	destTracks, err := dest.LovedTracks()
 	if err != nil {
 		return fmt.Errorf("failed to get loved tracks: %w", err)
@@ -190,21 +196,47 @@ func sync(name string, dest model.Source, sourceTracks []model.LovedTrack) error
 
 	slog.Info(
 		"Calculated differences",
-		"destination", name,
-		"destination_count", len(destTracks),
-		"to_add", len(toLove),
-		"to_remove", len(toUnlove),
-		"source", *source,
-		"source_count", len(sourceTracks),
+		"destination",
+		name,
+		"destination_count",
+		len(destTracks),
+		"to_add",
+		len(toLove),
+		"to_remove",
+		len(toUnlove),
+		"source",
+		*source,
+		"source_count",
+		len(sourceTracks),
 	)
 
 	if *dryRun {
 		for _, track := range toLove {
-			slog.Info("Would love", "artist", track.Artist, "title", track.Track, "mbid", track.TrackMBID, "destination", name)
+			slog.Info(
+				"Would love",
+				"artist",
+				track.Artist,
+				"title",
+				track.Track,
+				"mbid",
+				track.TrackMBID,
+				"destination",
+				name,
+			)
 		}
 		if *removeOther {
 			for _, track := range toUnlove {
-				slog.Info("Would unlove", "artist", track.Artist, "title", track.Track, "mbid", track.TrackMBID, "destination", name)
+				slog.Info(
+					"Would unlove",
+					"artist",
+					track.Artist,
+					"title",
+					track.Track,
+					"mbid",
+					track.TrackMBID,
+					"destination",
+					name,
+				)
 			}
 		}
 		return nil

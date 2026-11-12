@@ -2,6 +2,7 @@ package sources
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -52,11 +53,28 @@ func (lb *ListenBrainz) LovedTracks() ([]model.LovedTrack, error) {
 	return allTracks, nil
 }
 
+// Love marks tracks as loved on ListenBrainz
+func (lb *ListenBrainz) Love(tracks []model.LovedTrack) error {
+	return lb.submitFeedback(tracks, 1)
+}
+
+// Unlove removes loved status from tracks on ListenBrainz
+func (lb *ListenBrainz) Unlove(tracks []model.LovedTrack) error {
+	return lb.submitFeedback(tracks, 0)
+}
+
 // fetchLovedTracksPage fetches a single page of loved tracks
 func (lb *ListenBrainz) fetchLovedTracksPage(offset, count int) ([]model.LovedTrack, int, error) {
-	url := fmt.Sprintf("https://api.listenbrainz.org/1/feedback/user/%s/get-feedback?score=1&offset=%d&count=%d", lb.Username, offset, count)
-
-	body, err := lb.doRequest(http.MethodGet, url, nil)
+	body, err := lb.doRequest(
+		http.MethodGet,
+		fmt.Sprintf(
+			"https://api.listenbrainz.org/1/feedback/user/%s/get-feedback?score=1&offset=%d&count=%d",
+			lb.Username,
+			offset,
+			count,
+		),
+		nil,
+	)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -68,22 +86,15 @@ func (lb *ListenBrainz) fetchLovedTracksPage(offset, count int) ([]model.LovedTr
 
 	var tracks []model.LovedTrack
 	for _, feedback := range feedbackResp.Feedback {
-		tracks = append(tracks, model.LovedTrack{
-			TrackMBID: feedback.RecordingMBID,
-		})
+		tracks = append(
+			tracks,
+			model.LovedTrack{
+				TrackMBID: feedback.RecordingMBID,
+			},
+		)
 	}
 
 	return tracks, feedbackResp.TotalCount, nil
-}
-
-// Love marks tracks as loved on ListenBrainz
-func (lb *ListenBrainz) Love(tracks []model.LovedTrack) error {
-	return lb.submitFeedback(tracks, 1)
-}
-
-// Unlove removes loved status from tracks on ListenBrainz
-func (lb *ListenBrainz) Unlove(tracks []model.LovedTrack) error {
-	return lb.submitFeedback(tracks, 0)
 }
 
 // submitFeedback submits feedback for tracks to ListenBrainz
@@ -94,16 +105,24 @@ func (lb *ListenBrainz) submitFeedback(tracks []model.LovedTrack, score int) err
 
 	for _, track := range tracks {
 		if track.TrackMBID == "" {
-			slog.Warn("Skipping track without MBID", "artist", track.Artist, "title", track.Track, "source", "listenbrainz")
+			slog.Warn(
+				"Skipping track without MBID",
+				"artist",
+				track.Artist,
+				"title",
+				track.Track,
+				"source",
+				"listenbrainz",
+			)
 			continue
 		}
 
-		feedback := listenBrainzRecordingFeedback{
-			RecordingMBID: track.TrackMBID,
-			Score:         score,
-		}
-
-		jsonData, err := json.Marshal(feedback)
+		jsonData, err := json.Marshal(
+			listenBrainzRecordingFeedback{
+				RecordingMBID: track.TrackMBID,
+				Score:         score,
+			},
+		)
 		if err != nil {
 			return err
 		}
@@ -136,12 +155,12 @@ func (lb *ListenBrainz) doRequest(method, url string, body []byte) ([]byte, erro
 			reqBody = bytes.NewReader(body)
 		}
 
-		req, err := http.NewRequest(method, url, reqBody)
+		req, err := http.NewRequestWithContext(context.Background(), method, url, reqBody)
 		if err != nil {
 			return nil, err
 		}
 
-		req.Header.Set("Authorization", fmt.Sprintf("Token %s", lb.Token))
+		req.Header.Set("Authorization", "Token "+lb.Token)
 		req.Header.Set("User-Agent", lb.userAgent())
 		if body != nil {
 			req.Header.Set("Content-Type", "application/json")
@@ -159,16 +178,26 @@ func (lb *ListenBrainz) doRequest(method, url string, body []byte) ([]byte, erro
 
 		switch {
 		case resp.StatusCode == http.StatusOK:
-			time.Sleep(nextRequestDelay(resp))
+			time.Sleep(nextRequestDelay(resp.Header))
 			return respBody, nil
 
 		case resp.StatusCode == http.StatusTooManyRequests:
 			if attempt >= maxAttempts {
 				return nil, fmt.Errorf("ListenBrainz: still rate limited after %d attempts", attempt)
 			}
-			delay := retryDelay(resp, backoff)
+			delay := retryDelay(resp.Header, backoff)
 			backoff = min(2*backoff, 5*time.Minute)
-			slog.Warn("Rate limited (429), backing off", "attempt", attempt, "max_attempts", maxAttempts, "sleep_seconds", delay.Seconds(), "source", "listenbrainz")
+			slog.Warn(
+				"Rate limited (429), backing off",
+				"attempt",
+				attempt,
+				"max_attempts",
+				maxAttempts,
+				"sleep_seconds",
+				delay.Seconds(),
+				"source",
+				"listenbrainz",
+			)
 			time.Sleep(delay)
 
 		default:
@@ -186,11 +215,9 @@ func (lb *ListenBrainz) userAgent() string {
 	return "musiclover/dev"
 }
 
-// retryDelay returns how long to back off after a 429 response: the window
-// reset time reported by the server if available, or the given fallback
-// (which callers grow exponentially between attempts) otherwise.
-func retryDelay(resp *http.Response, fallback time.Duration) time.Duration {
-	if resetIn, ok := headerInt(resp, "X-RateLimit-Reset-In"); ok {
+// retryDelay prefers the server's reset time over the caller's fallback.
+func retryDelay(header http.Header, fallback time.Duration) time.Duration {
+	if resetIn, ok := headerInt(header, "X-RateLimit-Reset-In"); ok {
 		return time.Duration(resetIn+5) * time.Second
 	}
 	return fallback
@@ -200,11 +227,11 @@ func retryDelay(resp *http.Response, fallback time.Duration) time.Duration {
 // on the rate limit headers of the previous response. Normally this is a
 // steady one request per second, but if the current window is nearly
 // exhausted we wait for it to reset rather than risking a 429.
-func nextRequestDelay(resp *http.Response) time.Duration {
+func nextRequestDelay(header http.Header) time.Duration {
 	const baseDelay = 1 * time.Second
 
-	if remaining, ok := headerInt(resp, "X-RateLimit-Remaining"); ok && remaining <= 2 {
-		if resetIn, ok := headerInt(resp, "X-RateLimit-Reset-In"); ok {
+	if remaining, ok := headerInt(header, "X-RateLimit-Remaining"); ok && remaining <= 2 {
+		if resetIn, ok := headerInt(header, "X-RateLimit-Reset-In"); ok {
 			return max(time.Duration(resetIn+1)*time.Second, baseDelay)
 		}
 	}
@@ -213,8 +240,8 @@ func nextRequestDelay(resp *http.Response) time.Duration {
 
 // headerInt reads an integer-valued header, reporting whether it was present
 // and parseable.
-func headerInt(resp *http.Response, name string) (value int, ok bool) {
-	value, err := strconv.Atoi(resp.Header.Get(name))
+func headerInt(header http.Header, name string) (value int, ok bool) {
+	value, err := strconv.Atoi(header.Get(name))
 	return value, err == nil
 }
 
@@ -234,5 +261,3 @@ type listenBrainzRecordingFeedback struct {
 	RecordingMBID string `json:"recording_mbid"`
 	Score         int    `json:"score"`
 }
-
-var _ model.Source = &ListenBrainz{}

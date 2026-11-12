@@ -33,22 +33,27 @@ func (l *Lastfm) LovedTracks() ([]model.LovedTrack, error) {
 	page := uint(1)
 
 	for {
-		lovedTracks, err := client.User.LovedTracks(lastfm.LovedTracksParams{
-			User:  l.Username,
-			Page:  page,
-			Limit: 200,
-		})
+		lovedTracks, err := client.User.LovedTracks(
+			lastfm.LovedTracksParams{
+				User:  l.Username,
+				Page:  page,
+				Limit: 200,
+			},
+		)
 		if err != nil {
 			return nil, err
 		}
 
 		for _, track := range lovedTracks.Tracks {
-			tracks = append(tracks, model.LovedTrack{
-				Track:      track.Title,
-				TrackMBID:  track.MBID,
-				Artist:     track.Artist.Name,
-				ArtistMBID: track.Artist.MBID,
-			})
+			tracks = append(
+				tracks,
+				model.LovedTrack{
+					Track:      track.Title,
+					TrackMBID:  track.MBID,
+					Artist:     track.Artist.Name,
+					ArtistMBID: track.Artist.MBID,
+				},
+			)
 		}
 
 		if page >= uint(lovedTracks.TotalPages) {
@@ -76,9 +81,11 @@ func (l *Lastfm) Love(tracks []model.LovedTrack) error {
 		var artist, title string
 
 		if track.TrackMBID != "" {
-			trackInfo, err := client.Track.InfoByMBID(lastfm.TrackInfoMBIDParams{
-				MBID: track.TrackMBID,
-			})
+			trackInfo, err := client.Track.InfoByMBID(
+				lastfm.TrackInfoMBIDParams{
+					MBID: track.TrackMBID,
+				},
+			)
 			if err == nil {
 				artist = trackInfo.Artist.Name
 				title = trackInfo.Title
@@ -86,7 +93,15 @@ func (l *Lastfm) Love(tracks []model.LovedTrack) error {
 		}
 
 		if artist == "" || title == "" {
-			slog.Info("Couldn't use MBID to find Last.fm track, falling back to blind artist/title", "mbid", track.TrackMBID, "artist", track.Artist, "title", track.Track)
+			slog.Info(
+				"Couldn't use MBID to find Last.fm track, falling back to blind artist/title",
+				"mbid",
+				track.TrackMBID,
+				"artist",
+				track.Artist,
+				"title",
+				track.Track,
+			)
 			artist = track.Artist
 			title = track.Track
 		}
@@ -136,5 +151,3 @@ func (l *Lastfm) getClient() (*session.Client, error) {
 	l.client = client
 	return l.client, nil
 }
-
-var _ model.Source = &Lastfm{}
