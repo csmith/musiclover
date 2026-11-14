@@ -3,7 +3,7 @@ module github.com/csmith/musiclover
 go 1.25.1
 
 require (
-	github.com/agnivade/levenshtein v1.2.1
+	github.com/agnivade/levenshtein v1.2.2
 	github.com/csmith/envflag/v2 v2.0.0
 	github.com/csmith/slogflags v1.2.0
 	github.com/stretchr/testify v1.12.1
