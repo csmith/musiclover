@@ -8,7 +8,7 @@ require (
 	github.com/csmith/slogflags v1.2.0
 	github.com/stretchr/testify v1.12.1
 	github.com/supersonic-app/go-subsonic v0.0.0-20260807144657-acbe3dde04b7
-	github.com/twoscott/gobble-fm v1.0.9
+	github.com/twoscott/gobble-fm v1.0.10
 )
 
 require (
